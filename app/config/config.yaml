@@ -1,0 +1,23 @@
+db:
+  dsn: "root:st123456@tcp(localhost:3306)/stake_db?charset=utf8mb4&parseTime=True&loc=Local"
+  maxOpenConns: 100
+  MaxIdleConns: 10
+
+
+monitor:
+  pprof_enable: true
+  pprof_port: 6060
+
+redis:
+  host: "127.0.0.1"
+  port: 6379
+  password: "12345678"
+  db: 0
+
+log:
+  compress: false
+  keep_days: 7
+  level: "info"
+  mode: "console"
+  path: "logs"
+  service_name: "StakeSync"
