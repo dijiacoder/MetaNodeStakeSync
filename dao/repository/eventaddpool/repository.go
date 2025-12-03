@@ -31,3 +31,22 @@ func UpdateByID(ctx context.Context, db *gorm.DB, id int64, updates map[string]i
 func DeleteByID(ctx context.Context, db *gorm.DB, id int64) error {
 	return db.WithContext(ctx).Delete(&model.EventAddPool{}, id).Error
 }
+
+// GetNextPoolID 获取下一个可用的 PoolID（等于当前表的总行数）
+func GetNextPoolID(ctx context.Context, db *gorm.DB) (int32, error) {
+	var count int64
+	if err := db.WithContext(ctx).Model(&model.EventAddPool{}).Count(&count).Error; err != nil {
+		return 0, err
+	}
+	return int32(count), nil
+}
+
+// ExistsByTxHash 检查指定的交易哈希是否已存在
+func ExistsByTxHash(ctx context.Context, db *gorm.DB, txHash string) (bool, error) {
+	var count int64
+	err := db.WithContext(ctx).Model(&model.EventAddPool{}).Where("transaction_hash = ?", txHash).Count(&count).Error
+	if err != nil {
+		return false, err
+	}
+	return count > 0, nil
+}

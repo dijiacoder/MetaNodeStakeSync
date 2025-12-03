@@ -7,6 +7,8 @@ import (
 	"math/big"
 	"time"
 
+	"github.com/dijiacoder/MetaNodeStakeSync/dao/model"
+	"github.com/dijiacoder/MetaNodeStakeSync/dao/repository/eventaddpool"
 	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/accounts/abi"
 	ethCommon "github.com/ethereum/go-ethereum/common"
@@ -84,7 +86,7 @@ func (t *TaskStake) process() {
 func (t *TaskStake) queryLogs() {
 	startBlock := big.NewInt(0)
 
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
 	lastHeigh, err := t.RedisClient.Get(ctx, common.GetKey(t.ChainID, t.Address)).Uint64()
@@ -131,7 +133,7 @@ func (t *TaskStake) queryLogs() {
 	}
 
 	for _, l := range logs {
-		handlers := map[string]func(ethereumTypes.Log){
+		handlers := map[string]func(ethereumTypes.Log) bool{
 			t.ABI.Events["AddPool"].ID.Hex():        t.HandleAddPoolEvent,
 			t.ABI.Events["Deposit"].ID.Hex():        t.HandleDepositEvent,
 			t.ABI.Events["Claim"].ID.Hex():          t.HandleClaimEvent,
@@ -139,10 +141,12 @@ func (t *TaskStake) queryLogs() {
 			t.ABI.Events["Withdraw"].ID.Hex():       t.HandleWithdrawEvent,
 		}
 
-		// 处理日志
 		eventID := l.Topics[0].Hex()
 		if h, ok := handlers[eventID]; ok {
-			h(l)
+			if !h(l) {
+				logx.Error(fmt.Sprintf("Failed to handle event: %s, Block: %d, TxHash: %s", eventID, l.BlockNumber, l.TxHash.Hex()))
+				return
+			}
 		} else {
 			logx.Info(fmt.Sprintf("Unknown event ID: %s, Block: %d, TxHash: %s", eventID, l.BlockNumber, l.TxHash.Hex()))
 		}
@@ -155,27 +159,103 @@ func (t *TaskStake) queryLogs() {
 	}
 }
 
-func (t *TaskStake) HandleAddPoolEvent(l ethereumTypes.Log) {
+func (t *TaskStake) HandleAddPoolEvent(l ethereumTypes.Log) bool {
 	logx.Info(fmt.Sprintf("HandleAddPoolEvent: BlockNumber=%d, TxHash=%s, Address=%s, Topics=%v, Data=%x",
 		l.BlockNumber, l.TxHash.Hex(), l.Address.Hex(), l.Topics, l.Data))
+	if len(l.Topics) < 4 {
+		logx.Error("HandleAddPoolEvent: invalid topics length")
+		return false
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	exists, err := eventaddpool.ExistsByTxHash(ctx, t.DB, l.TxHash.Hex())
+	if err != nil {
+		logx.Error("HandleAddPoolEvent: failed to check tx hash existence: ", err)
+		return false
+	}
+	if exists {
+		logx.Info(fmt.Sprintf("HandleAddPoolEvent: transaction already processed, TxHash=%s", l.TxHash.Hex()))
+		return true
+	}
+
+	stTokenAddress := ethCommon.HexToAddress(l.Topics[1].Hex()) //质押代币地址
+	poolWeight := l.Topics[2].Big()                             //池子权重
+	lastRewardBlock := l.Topics[3].Big()                        //最后奖励区块
+
+	params, err := t.ABI.Events["AddPool"].Inputs.UnpackValues(l.Data)
+	if err != nil {
+		logx.Error("HandleAddPoolEvent: failed to unpack data: ", err)
+		return false
+	}
+
+	if len(params) < 2 {
+		logx.Error("HandleAddPoolEvent: invalid params length")
+		return false
+	}
+
+	minDepositAmount := params[0].(*big.Int)    //最小质押数量
+	unstakeLockedBlocks := params[1].(*big.Int) //解锁区块数
+
+	logx.Info(fmt.Sprintf("AddPool Event - stTokenAddress: %s, poolWeight: %s, lastRewardBlock: %s, minDepositAmount: %s, unstakeLockedBlocks: %s",
+		stTokenAddress.Hex(), poolWeight.String(), lastRewardBlock.String(), minDepositAmount.String(), unstakeLockedBlocks.String()))
+
+	block, err := t.Client.BlockByNumber(ctx, big.NewInt(int64(l.BlockNumber)))
+	if err != nil {
+		logx.Error("HandleAddPoolEvent: failed to get block: ", err)
+		return false
+	}
+
+	poolID, err := eventaddpool.GetNextPoolID(ctx, t.DB)
+
+	poolWeightFloat, _ := new(big.Float).SetInt(poolWeight).Float64()
+	minDepositAmountStr := new(big.Float).Quo(new(big.Float).SetInt(minDepositAmount), big.NewFloat(1e18))
+	minDepositAmountFloat, _ := minDepositAmountStr.Float64()
+
+	eventAddPool := &model.EventAddPool{
+		ContractAddress:     t.Address,
+		PoolID:              poolID,
+		StTokenAddress:      stTokenAddress.Hex(),
+		PoolWeight:          poolWeightFloat,
+		LastRewardBlock:     lastRewardBlock.Uint64(),
+		MinDepositAmount:    minDepositAmountFloat,
+		UnstakeLockedBlocks: int32(unstakeLockedBlocks.Int64()),
+		BlockNumber:         l.BlockNumber,
+		BlockTimestamp:      block.Time(),
+		TransactionHash:     l.TxHash.Hex(),
+		LogIndex:            int32(l.Index),
+	}
+
+	if err := eventaddpool.Create(ctx, t.DB, eventAddPool); err != nil {
+		logx.Error("HandleAddPoolEvent: failed to create event: ", err)
+		return false
+	}
+
+	logx.Info(fmt.Sprintf("HandleAddPoolEvent: saved to database, poolID=%d", poolID))
+	return true
 }
 
-func (t *TaskStake) HandleDepositEvent(l ethereumTypes.Log) {
+func (t *TaskStake) HandleDepositEvent(l ethereumTypes.Log) bool {
 	logx.Info(fmt.Sprintf("HandleDepositEvent: BlockNumber=%d, TxHash=%s, Address=%s, Topics=%v, Data=%x",
 		l.BlockNumber, l.TxHash.Hex(), l.Address.Hex(), l.Topics, l.Data))
+	return true
 }
 
-func (t *TaskStake) HandleClaimEvent(l ethereumTypes.Log) {
+func (t *TaskStake) HandleClaimEvent(l ethereumTypes.Log) bool {
 	logx.Info(fmt.Sprintf("HandleClaimEvent: BlockNumber=%d, TxHash=%s, Address=%s, Topics=%v, Data=%x",
 		l.BlockNumber, l.TxHash.Hex(), l.Address.Hex(), l.Topics, l.Data))
+	return true
 }
 
-func (t *TaskStake) HandleRequestUnstakeEvent(l ethereumTypes.Log) {
+func (t *TaskStake) HandleRequestUnstakeEvent(l ethereumTypes.Log) bool {
 	logx.Info(fmt.Sprintf("HandleRequestUnstakeEvent: BlockNumber=%d, TxHash=%s, Address=%s, Topics=%v, Data=%x",
 		l.BlockNumber, l.TxHash.Hex(), l.Address.Hex(), l.Topics, l.Data))
+	return true
 }
 
-func (t *TaskStake) HandleWithdrawEvent(l ethereumTypes.Log) {
+func (t *TaskStake) HandleWithdrawEvent(l ethereumTypes.Log) bool {
 	logx.Info(fmt.Sprintf("HandleWithdrawEvent: BlockNumber=%d, TxHash=%s, Address=%s, Topics=%v, Data=%x",
 		l.BlockNumber, l.TxHash.Hex(), l.Address.Hex(), l.Topics, l.Data))
+	return true
 }
