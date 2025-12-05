@@ -53,3 +53,8 @@ go get gorm.io/gen
 ```
 go run gen/main.go
 ```
+
+
+https://eth-sepolia.g.alchemy.com/v2/xKBTFF983ViLIrQj7MyvU_OLWrpSI-KC
+
+https://eth-sepolia.g.alchemy.com/v2/xKBTFF983ViLIrQj7MyvU_OLWrpSI-KC

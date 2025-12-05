@@ -19,12 +19,16 @@ var (
 	Q             = new(Query)
 	ChainContract *chainContract
 	ChainEndpoint *chainEndpoint
+	ContractEvent *contractEvent
+	PoolInfo      *poolInfo
 )
 
 func SetDefault(db *gorm.DB, opts ...gen.DOOption) {
 	*Q = *Use(db, opts...)
 	ChainContract = &Q.ChainContract
 	ChainEndpoint = &Q.ChainEndpoint
+	ContractEvent = &Q.ContractEvent
+	PoolInfo = &Q.PoolInfo
 }
 
 func Use(db *gorm.DB, opts ...gen.DOOption) *Query {
@@ -32,6 +36,8 @@ func Use(db *gorm.DB, opts ...gen.DOOption) *Query {
 		db:            db,
 		ChainContract: newChainContract(db, opts...),
 		ChainEndpoint: newChainEndpoint(db, opts...),
+		ContractEvent: newContractEvent(db, opts...),
+		PoolInfo:      newPoolInfo(db, opts...),
 	}
 }
 
@@ -40,6 +46,8 @@ type Query struct {
 
 	ChainContract chainContract
 	ChainEndpoint chainEndpoint
+	ContractEvent contractEvent
+	PoolInfo      poolInfo
 }
 
 func (q *Query) Available() bool { return q.db != nil }
@@ -49,6 +57,8 @@ func (q *Query) clone(db *gorm.DB) *Query {
 		db:            db,
 		ChainContract: q.ChainContract.clone(db),
 		ChainEndpoint: q.ChainEndpoint.clone(db),
+		ContractEvent: q.ContractEvent.clone(db),
+		PoolInfo:      q.PoolInfo.clone(db),
 	}
 }
 
@@ -65,18 +75,24 @@ func (q *Query) ReplaceDB(db *gorm.DB) *Query {
 		db:            db,
 		ChainContract: q.ChainContract.replaceDB(db),
 		ChainEndpoint: q.ChainEndpoint.replaceDB(db),
+		ContractEvent: q.ContractEvent.replaceDB(db),
+		PoolInfo:      q.PoolInfo.replaceDB(db),
 	}
 }
 
 type queryCtx struct {
 	ChainContract IChainContractDo
 	ChainEndpoint IChainEndpointDo
+	ContractEvent IContractEventDo
+	PoolInfo      IPoolInfoDo
 }
 
 func (q *Query) WithContext(ctx context.Context) *queryCtx {
 	return &queryCtx{
 		ChainContract: q.ChainContract.WithContext(ctx),
 		ChainEndpoint: q.ChainEndpoint.WithContext(ctx),
+		ContractEvent: q.ContractEvent.WithContext(ctx),
+		PoolInfo:      q.PoolInfo.WithContext(ctx),
 	}
 }
 

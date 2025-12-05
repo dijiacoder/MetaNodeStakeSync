@@ -79,6 +79,8 @@ func Test_WithContext(t *testing.T) {
 	for _, ctx := range []context.Context{
 		qCtx.ChainContract.UnderlyingDB().Statement.Context,
 		qCtx.ChainEndpoint.UnderlyingDB().Statement.Context,
+		qCtx.ContractEvent.UnderlyingDB().Statement.Context,
+		qCtx.PoolInfo.UnderlyingDB().Statement.Context,
 	} {
 		if v := ctx.Value(key); v != value {
 			t.Errorf("get value from context fail, expect %q, got %q", value, v)

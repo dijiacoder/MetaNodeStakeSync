@@ -30,23 +30,8 @@ func main() {
 	g.ApplyBasic(
 		g.GenerateModel("chain_contracts"),
 		g.GenerateModel("chain_endpoints"),
-		g.GenerateModel("event_claim"),
-		g.GenerateModel("event_withdraw"),
-		g.GenerateModel("event_request_unstake"),
-		g.GenerateModel("event_deposit"),
-		g.GenerateModel("event_update_pool"),
-		g.GenerateModel("event_set_pool_weight"),
-		g.GenerateModel("event_update_pool_info"),
-		g.GenerateModel("event_add_pool"),
-		g.GenerateModel("event_set_metanode_per_block"),
-		g.GenerateModel("event_set_end_block"),
-		g.GenerateModel("event_set_start_block"),
-		g.GenerateModel("event_pause_claim"),
-		g.GenerateModel("event_pause_withdraw"),
-		g.GenerateModel("event_set_metanode"),
-		g.GenerateModel("user_pool_stats"),
+		g.GenerateModel("contract_events"),
 		g.GenerateModel("pool_info"),
-		g.GenerateModel("sync_status"),
 	)
 
 	g.Execute()
